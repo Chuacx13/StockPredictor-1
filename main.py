@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from datetime import date
 import yfinance as yf
 from plotly import graph_objs as go
@@ -8,9 +9,20 @@ TODAY = date.today().strftime("%Y-%m-%d")
 
 st.title("Stock Prediction App")
 
-stocks = ("AAPL", "GOOG", "MSFT")
-selected_stock = st.selectbox("Select Stock for Prediction", stocks)
-n_years = st.slider("Years:", 1, 4)
+stocks = {
+    "Apple": "AAPL",
+    "Alibaba": "BABA",
+    "Nvidia": "NVDA",
+    "Taiwan Semiconductor": "TSM",
+    "Advanced Micro Devices": "AMD",
+    "Intel": "INTC",
+    "Tesla": "TSLA"
+}
+
+selected_stock_name = st.selectbox("Select Stock for Prediction", stocks.keys())
+selected_stock = stocks[selected_stock_name]
+
+n_years = st.slider("Years:", 1, 5)
 period = n_years * 365
 
 @st.cache_data
