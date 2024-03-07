@@ -39,6 +39,7 @@ for ticker in asia_market_dict.keys():
     data = yf.download(ticker, START, TODAY)
     asia_market_dict[ticker] = data
 
+#Process stocks used as predictors
 def data_munging_stocks(target_stock_name, target_stock_data): 
     df = pd.DataFrame(index=target_stock_data.index)
     df[target_stock_name] = target_stock_data['Open'].shift(-1) - target_stock_data['Open']
@@ -50,6 +51,9 @@ def data_munging_stocks(target_stock_name, target_stock_data):
 
     for ticker in asia_market_dict.keys():
         data = asia_market_dict[ticker]
-        df[ticker] = data['Open'] - data['Open'].shift(1)
+        df[ticker] = data['Close'] - data['Open']
+
+    df.fillna(method='ffill')
+    df.dropna()
 
     return df
