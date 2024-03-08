@@ -7,6 +7,7 @@ from datetime import date
 START = "2014-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 
+# Other Markets used for prediction
 # S&P 500 (^GSPC)
 # NASDAQ Composite (^IXIC)
 # Dow Jones Industrial Average (^DJI)
@@ -43,6 +44,14 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     df = pd.DataFrame(index=target_stock_data.index)
     df[target_stock_name] = target_stock_data['Open'].shift(-1) - target_stock_data['Open']
     df[target_stock_name + "_lag"] = df[target_stock_name].shift(1)
+
+    window = 10  
+    df[f'{target_stock_name}_SMA_{window}'] = target_stock_data['Close'].rolling(window=window).mean()
+    df[f'{target_stock_name}_EMA_{window}'] = target_stock_data['Close'].ewm(span=window, adjust=False).mean()
+
+    window = 50  
+    df[f'{target_stock_name}_SMA_{window}'] = target_stock_data['Close'].rolling(window=window).mean()
+    df[f'{target_stock_name}_EMA_{window}'] = target_stock_data['Close'].ewm(span=window, adjust=False).mean()
 
     for ticker in US_EU_market_dict.keys():
         data = US_EU_market_dict[ticker]
@@ -84,4 +93,4 @@ def predict_gain(df, scaler):
     return unscaled_predictions
     
 result = data_munging_stocks("AAPL", yf.download("AAPL", START, TODAY))
-print(predict_gain(result[0], result[1]))
+print(result[0])
