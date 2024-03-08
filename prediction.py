@@ -65,19 +65,19 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     df.dropna(inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
-
-    x = df.drop(columns=[target_stock_name]).copy()
     y = df[[target_stock_name]].copy()
-
-    scaled_x = scaler_x.fit_transform(x)
     scaled_y = scaler_y.fit_transform(y)
 
-    df_scaled = pd.DataFrame(index=df.index, data=scaled_x, columns=x.columns)
+    scaler_x = MinMaxScaler()
+    x = df.drop(columns=[target_stock_name]).copy()
+    for col in x.columns:
+        x[col] = scaler_x.fit_transform(x[[col]])
+
+    df_scaled = pd.DataFrame(index=df.index, data=x, columns=x.columns)
     df_scaled[target_stock_name] = scaled_y
 
-    return df_scaled, scaler_y
+    return df_scaled, scaler_y, df
 
 def predict_gain(df, scaler): 
     train_index = round(len(df) * 0.7)
@@ -93,4 +93,4 @@ def predict_gain(df, scaler):
     return unscaled_predictions
     
 result = data_munging_stocks("AAPL", yf.download("AAPL", START, TODAY))
-print(result[0])
+print(result[0], result[2])
