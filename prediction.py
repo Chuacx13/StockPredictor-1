@@ -1,8 +1,7 @@
 import pandas as pd
 import yfinance as yf
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import MinMaxScaler
 from datetime import date
 
 START = "2014-01-01"
@@ -28,7 +27,7 @@ US_EU_market_dict = {
 asia_market_dict = {
     "^AORD": [],
     "^HSI": [],
-    "^N2255": []
+    "^N225": []
 }
 
 for ticker in US_EU_market_dict.keys():
@@ -53,7 +52,36 @@ def data_munging_stocks(target_stock_name, target_stock_data):
         data = asia_market_dict[ticker]
         df[ticker] = data['Close'] - data['Open']
 
-    df.fillna(method='ffill')
-    df.dropna()
+    df.fillna(method='ffill', inplace=True)
+    df.dropna(inplace=True)
+    df.reset_index(drop=True, inplace=True)
 
-    return df
+    scaler_x = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+
+    x = df.drop(columns=[target_stock_name]).copy()
+    y = df[[target_stock_name]].copy()
+
+    scaled_x = scaler_x.fit_transform(x)
+    scaled_y = scaler_y.fit_transform(y)
+
+    df_scaled = pd.DataFrame(index=df.index, data=scaled_x, columns=x.columns)
+    df_scaled[target_stock_name] = scaled_y
+
+    return df_scaled, scaler_y
+
+def predict_gain(df, scaler): 
+    train_index = round(len(df) * 0.7)
+    test_index = train_index + 30
+    X_train = df.iloc[:train_index, 1:]
+    X_test = df.iloc[test_index:, 1:]
+    y_train = df.iloc[:train_index, 0]
+    y_test = df.iloc[test_index:, 0]
+    rf =  RandomForestRegressor(n_estimators=1000)
+    rf.fit(X_train, y_train)
+    predictions = rf.predict(X_test)
+    unscaled_predictions = scaler.inverse_transform(predictions.reshape(-1, 1)).flatten()
+    return unscaled_predictions
+    
+result = data_munging_stocks("AAPL", yf.download("AAPL", START, TODAY))
+print(predict_gain(result[0], result[1]))
