@@ -1,53 +1,16 @@
 import pandas as pd
-import yfinance as yf
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+import streamlit as st
 from sklearn.preprocessing import MinMaxScaler
-from datetime import date
-import matplotlib.pyplot as plt
-
-START = "2014-01-01"
-TODAY = date.today().strftime("%Y-%m-%d")
-
-# Other Markets used for prediction
-# S&P 500 (^GSPC)
-# NASDAQ Composite (^IXIC)
-# Dow Jones Industrial Average (^DJI)
-# CAC 40 (^FCHI)
-# DAX PERFORMANCE-INDEX (^GDAXI)
-# ALL ORDINARIES (^AORD)
-# HANG SENG INDEX (^HSI)
-# Nikkei 225 (^N225)
-
-US_EU_market_dict = {
-    "^GSPC": [], 
-    "^IXIC": [],
-    "^DJI": [],
-    "^FCHI": [],
-    "^GDAXI": []
-}
-
-asia_market_dict = {
-    "^AORD": [],
-    "^HSI": [],
-    "^N225": []
-}
-
-for ticker in US_EU_market_dict.keys():
-    data = yf.download(ticker, START, TODAY)
-    US_EU_market_dict[ticker] = data
-
-for ticker in asia_market_dict.keys():
-    data = yf.download(ticker, START, TODAY)
-    asia_market_dict[ticker] = data
 
 #Process stocks used as predictors
-def data_munging_stocks(target_stock_name, target_stock_data): 
-    df = pd.DataFrame(index=target_stock_data.index)
+@st.cache_data
+def data_munging_stocks(target_stock_name, target_stock_data, US_EU_market_dict, asia_market_dict):
+    df = target_stock_data[['Date']].copy()
     df[target_stock_name] = target_stock_data['Open'].shift(-1) - target_stock_data['Open']
     df[target_stock_name + "_lag"] = df[target_stock_name].shift(1)
     df['Close'] = target_stock_data['Close']
-    df['Date'] = target_stock_data.index
+    
     df['Price'] = target_stock_data['Open']
 
     for ticker in US_EU_market_dict.keys():
@@ -60,7 +23,6 @@ def data_munging_stocks(target_stock_name, target_stock_data):
 
     df.fillna(method='ffill', inplace=True)
     df.dropna(inplace=True)
-    df.reset_index(drop=True, inplace=True)
 
     scaler_y = MinMaxScaler()
     y = df[[target_stock_name]].copy()
@@ -73,11 +35,11 @@ def data_munging_stocks(target_stock_name, target_stock_data):
 
     df_scaled = pd.DataFrame(index=df.index, data=x, columns=x.columns)
     df_scaled[target_stock_name] = scaled_y
-
     return df_scaled, scaler_y, df
 
 # Prepare train scaled set, test scaled set, train data, test data and model
-def prep_train_test_model(df_scaled, df): 
+@st.cache_data
+def prep_train_test_model(df_scaled, df, _rf): 
     proportion_test = 0.7
     gap = 365
     train_index = round(len(df_scaled) * proportion_test)
@@ -90,14 +52,14 @@ def prep_train_test_model(df_scaled, df):
     train = df.iloc[:train_index, :]
     test = df.iloc[test_index:, :]  
 
-    rf = RandomForestRegressor(n_estimators=1000)
-    rf.fit(X_scaled_train, y_scaled_train)
-    return X_scaled_train, X_scaled_test, y_scaled_train, y_scaled_test, train, test, rf # might not need y
-    
+    _rf.fit(X_scaled_train, y_scaled_train)
+    return X_scaled_train, X_scaled_test, train, test, _rf 
+
 def adjusted_metric(scaled_data, data, model, num_of_predictors, yname, scaler_y):  
     predictions = model.predict(scaled_data)
     unscaled_predictions = scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
     data_copy = data.copy()
+    
     data_copy['predicted_gain'] = unscaled_predictions
 
     SST = ((data_copy[yname] - data_copy[yname].mean())**2).sum()
@@ -109,10 +71,12 @@ def adjusted_metric(scaled_data, data, model, num_of_predictors, yname, scaler_y
     RMSE = (SSE/(data_copy.shape[0] - num_of_predictors - 1))**0.5
     return adjustR2, RMSE, data_copy
 
-def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, model, yname, scaler_y):
+@st.cache_data
+def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, _model, yname, _scaler_y):
+    
     num_of_predictors = len(train_scaled_data.columns)
-    r2test, RMSEtest, predict_test_data = adjusted_metric(test_scaled_data, test_data, model, num_of_predictors, yname, scaler_y)
-    r2train, RMSEtrain, predict_train_data = adjusted_metric(train_scaled_data, train_data, model, num_of_predictors, yname, scaler_y)
+    r2test, RMSEtest, predict_test_data = adjusted_metric(test_scaled_data, test_data, _model, num_of_predictors, yname, _scaler_y)
+    r2train, RMSEtrain, predict_train_data = adjusted_metric(train_scaled_data, train_data, _model, num_of_predictors, yname, _scaler_y)
 
     assessment = pd.DataFrame(index=['R2', 'RMSE'], columns=['Train', 'Test'])
     assessment['Train'] = [r2train, RMSEtrain]
@@ -120,6 +84,7 @@ def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, mod
 
     return assessment, predict_train_data, predict_test_data
 
+@st.cache_data
 def calc_profits(df, target_stock_name):
     df_copy = df.copy()
     window = 10
@@ -143,27 +108,9 @@ def calc_profits(df, target_stock_name):
     df_copy['Trade'] = df_copy['Profit'].cumsum()
     df_copy['Hold'] = df_copy[target_stock_name].cumsum()
     total_profits = df_copy['Profit'].sum()
-
-    df_copy.set_index('Date', inplace=True)
     return df_copy, total_profits
 
-def plot_profit_loss(df):
-    df['Profit'].plot()
-    plt.axhline(y=0, color='red')
-    plt.xlabel('Date')
-    plt.ylabel('Profit/Loss')
-    plt.show()
-    return
-
-def hold_vs_trade(df):
-    plt.plot(df.index, df['Trade'].values, color = 'green', label = 'Signal based strategy')
-    plt.plot(df.index, df['Hold'].values, color = 'red', label = 'Buy and Hold strategy')
-    plt.xlabel('Wealth')
-    plt.ylabel('Profit/Loss')
-    plt.legend()
-    plt.show()
-    return
-
+@st.cache_data
 def calc_sharpe_ratio(df):
     df_copy = df.copy()
     df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
@@ -171,9 +118,9 @@ def calc_sharpe_ratio(df):
     daily_return = df_copy['Return'].dropna()
     daily_sharpe = daily_return.mean() / daily_return.std(ddof=1)
     yearly_sharpe = (252**0.5)*daily_return.mean() / daily_return.std(ddof=1)
-    print(daily_sharpe, yearly_sharpe)
     return daily_sharpe, yearly_sharpe
 
+@st.cache_data
 def calc_max_drawdown(df):
     df_copy = df.copy()
     df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
@@ -182,10 +129,3 @@ def calc_max_drawdown(df):
     max_drawdown = df_copy['Drawdown'].max()
     return max_drawdown
 
-#Test Output
-result = data_munging_stocks("TSLA", yf.download("TSLA", START, TODAY))
-gain = prep_train_test_model(result[0], result[2])
-final = assess_table(gain[0], gain[1], gain[4], gain[5], gain[6], "TSLA", result[1])
-profit = calc_profits(final[1], "TSLA")
-print(calc_max_drawdown(profit[0]))
-calc_sharpe_ratio(profit[0])
