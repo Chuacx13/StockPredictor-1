@@ -1,5 +1,6 @@
 import pandas as pd
 import yfinance as yf
+import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 from datetime import date
@@ -47,6 +48,7 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     df[target_stock_name + "_lag"] = df[target_stock_name].shift(1)
     df['Close'] = target_stock_data['Close']
     df['Date'] = target_stock_data.index
+    df['Price'] = target_stock_data['Open']
 
     for ticker in US_EU_market_dict.keys():
         data = US_EU_market_dict[ticker]
@@ -118,7 +120,7 @@ def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, mod
 
     return assessment, predict_train_data, predict_test_data
 
-def calculate_profits(df, target_stock_name):
+def calc_profits(df, target_stock_name):
     df_copy = df.copy()
     window = 10
     df_copy[f'{target_stock_name}_SMA_{window}'] = df_copy['Close'].rolling(window=window).mean()
@@ -145,27 +147,45 @@ def calculate_profits(df, target_stock_name):
     df_copy.set_index('Date', inplace=True)
     return df_copy, total_profits
 
-def plot_profit_loss(df_copy):
-    df_copy['Profit'].plot()
+def plot_profit_loss(df):
+    df['Profit'].plot()
     plt.axhline(y=0, color='red')
     plt.xlabel('Date')
     plt.ylabel('Profit/Loss')
     plt.show()
     return
 
-def hold_vs_trade(df_copy):
-    plt.plot(df_copy.index, df_copy['Trade'].values, color = 'green', label = 'Signal based strategy')
-    plt.plot(df_copy.index, df_copy['Hold'].values, color = 'red', label = 'Buy and Hold strategy')
+def hold_vs_trade(df):
+    plt.plot(df.index, df['Trade'].values, color = 'green', label = 'Signal based strategy')
+    plt.plot(df.index, df['Hold'].values, color = 'red', label = 'Buy and Hold strategy')
     plt.xlabel('Wealth')
     plt.ylabel('Profit/Loss')
     plt.legend()
     plt.show()
     return
 
+def calc_sharpe_ratio(df):
+    df_copy = df.copy()
+    df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
+    df_copy['Return'] =  np.log(df_copy['Wealth']) - np.log(df_copy['Wealth'].shift(1))
+    daily_return = df_copy['Return'].dropna()
+    daily_sharpe = daily_return.mean() / daily_return.std(ddof=1)
+    yearly_sharpe = (252**0.5)*daily_return.mean() / daily_return.std(ddof=1)
+    print(daily_sharpe, yearly_sharpe)
+    return daily_sharpe, yearly_sharpe
+
+def calc_max_drawdown(df):
+    df_copy = df.copy()
+    df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
+    df_copy['Peak'] = df_copy['Wealth'].cummax()
+    df_copy['Drawdown'] = (df_copy['Peak'] - df_copy['Wealth']) / df_copy['Peak']
+    max_drawdown = df_copy['Drawdown'].max()
+    return max_drawdown
+
 #Test Output
 result = data_munging_stocks("TSLA", yf.download("TSLA", START, TODAY))
 gain = prep_train_test_model(result[0], result[2])
 final = assess_table(gain[0], gain[1], gain[4], gain[5], gain[6], "TSLA", result[1])
-profit = calculate_profits(final[1], "TSLA")
-hold_vs_trade(profit[0])
-#plot_profit_loss(profit[0])
+profit = calc_profits(final[1], "TSLA")
+print(calc_max_drawdown(profit[0]))
+calc_sharpe_ratio(profit[0])
