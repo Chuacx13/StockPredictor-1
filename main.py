@@ -5,7 +5,6 @@ import charts as ch
 import prediction as pred
 from datetime import date
 from sklearn.ensemble import RandomForestRegressor
-from plotly import graph_objs as go
 
 # Timeframe used
 START = "2014-01-01"
@@ -90,6 +89,7 @@ X_scaled_train, X_scaled_test, train, test, rf_trained  = pred.prep_train_test_m
 # Assess test and train set using RMSE and Adjusted R^2, 
 state.text("Assessing train and test model...")
 assessment, predict_train_data, predict_test_data = pred.assess_table(X_scaled_train, X_scaled_test, train, test, rf_trained, selected_stock, scaler_y)
+st.dataframe(assessment)
 
 # Calculate profits for train set
 state.text("Calculating profits for train data...")
