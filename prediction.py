@@ -44,14 +44,7 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     df = pd.DataFrame(index=target_stock_data.index)
     df[target_stock_name] = target_stock_data['Open'].shift(-1) - target_stock_data['Open']
     df[target_stock_name + "_lag"] = df[target_stock_name].shift(1)
-
-    window = 20
-    df[f'{target_stock_name}_SMA_{window}'] = target_stock_data['Close'].rolling(window=window).mean()
-    df[f'{target_stock_name}_EMA_{window}'] = target_stock_data['Close'].ewm(span=window, adjust=False).mean()
-
-    window = 200
-    df[f'{target_stock_name}_SMA_{window}'] = target_stock_data['Close'].rolling(window=window).mean()
-    df[f'{target_stock_name}_EMA_{window}'] = target_stock_data['Close'].ewm(span=window, adjust=False).mean()
+    df['Close'] = target_stock_data['Close']
 
     for ticker in US_EU_market_dict.keys():
         data = US_EU_market_dict[ticker]
@@ -70,7 +63,7 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     scaled_y = scaler_y.fit_transform(y)
 
     scaler_x = MinMaxScaler()
-    x = df.drop(columns=[target_stock_name]).copy()
+    x = df.drop(columns=[target_stock_name, 'Close']).copy()
     for col in x.columns:
         x[col] = scaler_x.fit_transform(x[[col]])
 
@@ -81,8 +74,8 @@ def data_munging_stocks(target_stock_name, target_stock_data):
 
 # Prepare train scaled set, test scaled set, train data, test data and model
 def prep_train_test_model(df_scaled, df): 
-    proportion_test = 0.8
-    gap = 180
+    proportion_test = 0.7
+    gap = 365
     train_index = round(len(df_scaled) * proportion_test)
     test_index = train_index + gap
     X_scaled_train = df_scaled.iloc[:train_index, 1:]
@@ -100,31 +93,58 @@ def prep_train_test_model(df_scaled, df):
 def adjusted_metric(scaled_data, data, model, num_of_predictors, yname, scaler_y):  
     predictions = model.predict(scaled_data)
     unscaled_predictions = scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
-    data.loc[:,'predicted_gain'] = unscaled_predictions
+    data_copy = data.copy()
+    data_copy['predicted_gain'] = unscaled_predictions
 
-    SST = ((data[yname] - data[yname].mean())**2).sum()
-    SSR = ((data['predicted_gain'] - data[yname].mean())**2).sum()
-    SSE = ((data[yname] - data['predicted_gain'])**2).sum()
+    SST = ((data_copy[yname] - data_copy[yname].mean())**2).sum()
+    SSR = ((data_copy['predicted_gain'] - data_copy[yname].mean())**2).sum()
+    SSE = ((data_copy[yname] - data_copy['predicted_gain'])**2).sum()
     r2 = SSR/SST
 
-    adjustR2 = 1 - (1 - r2)*(data.shape[0] - 1)/(data.shape[0] - num_of_predictors - 1)
-    RMSE = (SSE/(data.shape[0] - num_of_predictors - 1))**0.5
-    return adjustR2, RMSE
+    adjustR2 = 1 - (1 - r2)*(data_copy.shape[0] - 1)/(data_copy.shape[0] - num_of_predictors - 1)
+    RMSE = (SSE/(data_copy.shape[0] - num_of_predictors - 1))**0.5
+    return adjustR2, RMSE, data_copy
 
 def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, model, yname, scaler_y):
-    num_of_predictors = len(train_data.columns) - 1
-    r2test, RMSEtest = adjusted_metric(test_scaled_data, test_data, model, num_of_predictors, yname, scaler_y)
-    r2train, RMSEtrain = adjusted_metric(train_scaled_data, train_data, model, num_of_predictors, yname, scaler_y)
+    num_of_predictors = len(train_scaled_data.columns)
+    r2test, RMSEtest, predict_test_data = adjusted_metric(test_scaled_data, test_data, model, num_of_predictors, yname, scaler_y)
+    r2train, RMSEtrain, predict_train_data = adjusted_metric(train_scaled_data, train_data, model, num_of_predictors, yname, scaler_y)
 
     assessment = pd.DataFrame(index=['R2', 'RMSE'], columns=['Train', 'Test'])
     assessment['Train'] = [r2train, RMSEtrain]
     assessment['Test'] = [r2test, RMSEtest]
-    return assessment
+
+    return assessment, predict_train_data, predict_test_data
+
+def calculate_profits(df, target_stock_name):
+    df_copy = df.copy()
+    window = 10
+    df_copy[f'{target_stock_name}_SMA_{window}'] = df_copy['Close'].rolling(window=window).mean()
+    df_copy[f'{target_stock_name}_EMA_{window}'] = df_copy['Close'].ewm(span=window, adjust=False).mean()
+
+    window2 = 50
+    df_copy[f'{target_stock_name}_SMA_{window2}'] = df_copy['Close'].rolling(window=window2).mean()
+    df_copy[f'{target_stock_name}_EMA_{window2}'] = df_copy['Close'].ewm(span=window2, adjust=False).mean()
+
+    df_copy.dropna(inplace=True)
+
+    # Long if predicted gain is positive, SMA_window > SMA__window2 and EMA_window > EMA_window2, short otherwise
+    df_copy['Order'] = [1 if row['predicted_gain'] > 0 and 
+                    row[f'{target_stock_name}_SMA_{window}'] > row[f'{target_stock_name}_SMA_{window2}'] and 
+                    row[f'{target_stock_name}_EMA_{window}'] > row[f'{target_stock_name}_EMA_{window2}'] 
+                    else -1
+                    for _, row in df_copy.iterrows()]
+    
+    df_copy['Profit'] = df_copy[target_stock_name] * df_copy['Order']
+    df_copy['Wealth'] = df_copy['Profit'].cumsum()
+    total_profits = df_copy['Profit'].sum()
+    return df_copy, total_profits
+
 
 #Test Output
-result = data_munging_stocks("AAPL", yf.download("AAPL", START, TODAY))
+result = data_munging_stocks("TSLA", yf.download("TSLA", START, TODAY))
 gain = prep_train_test_model(result[0], result[2])
-final = assess_table(gain[0], gain[1], gain[4], gain[5], gain[6], "AAPL", result[1])
-print(final)
+final = assess_table(gain[0], gain[1], gain[4], gain[5], gain[6], "TSLA", result[1])
+print(calculate_profits(final[1], "TSLA"))
 
 
