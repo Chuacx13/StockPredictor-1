@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import yfinance as yf
-from plotly import graph_objs as go
+import charts
+import prediction
 
 START = "2014-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
@@ -33,16 +34,13 @@ def load_data(ticker):
 
 data_load_state = st.text("Load Data...")
 data = load_data(selected_stock)
-data_load_state.text("Loading data...done!")
+data_load_state.text("")
 
 st.subheader('Raw Data')
 st.write(data)
 
-def plot_raw_data():
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Open'], name='stock_open'))
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], name='stock_close'))
-    fig.layout.update(title_text="Time Series Data", xaxis_rangeslider_visible=True)
-    st.plotly_chart(fig)
+st.subheader(f'Open Price History of {selected_stock_name}')
+charts.plot_open_raw_data(data, st)
 
-plot_raw_data()
+st.subheader(f'Close Price History of {selected_stock_name}')
+charts.plot_close_raw_data(data, st)
