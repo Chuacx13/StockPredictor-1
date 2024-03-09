@@ -3,6 +3,7 @@ import yfinance as yf
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 from datetime import date
+import matplotlib.pyplot as plt
 
 START = "2014-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
@@ -45,6 +46,7 @@ def data_munging_stocks(target_stock_name, target_stock_data):
     df[target_stock_name] = target_stock_data['Open'].shift(-1) - target_stock_data['Open']
     df[target_stock_name + "_lag"] = df[target_stock_name].shift(1)
     df['Close'] = target_stock_data['Close']
+    df['Date'] = target_stock_data.index
 
     for ticker in US_EU_market_dict.keys():
         data = US_EU_market_dict[ticker]
@@ -136,15 +138,34 @@ def calculate_profits(df, target_stock_name):
                     for _, row in df_copy.iterrows()]
     
     df_copy['Profit'] = df_copy[target_stock_name] * df_copy['Order']
-    df_copy['Wealth'] = df_copy['Profit'].cumsum()
+    df_copy['Trade'] = df_copy['Profit'].cumsum()
+    df_copy['Hold'] = df_copy[target_stock_name].cumsum()
     total_profits = df_copy['Profit'].sum()
+
+    df_copy.set_index('Date', inplace=True)
     return df_copy, total_profits
 
+def plot_profit_loss(df_copy):
+    df_copy['Profit'].plot()
+    plt.axhline(y=0, color='red')
+    plt.xlabel('Date')
+    plt.ylabel('Profit/Loss')
+    plt.show()
+    return
+
+def hold_vs_trade(df_copy):
+    plt.plot(df_copy.index, df_copy['Trade'].values, color = 'green', label = 'Signal based strategy')
+    plt.plot(df_copy.index, df_copy['Hold'].values, color = 'red', label = 'Buy and Hold strategy')
+    plt.xlabel('Wealth')
+    plt.ylabel('Profit/Loss')
+    plt.legend()
+    plt.show()
+    return
 
 #Test Output
 result = data_munging_stocks("TSLA", yf.download("TSLA", START, TODAY))
 gain = prep_train_test_model(result[0], result[2])
 final = assess_table(gain[0], gain[1], gain[4], gain[5], gain[6], "TSLA", result[1])
-print(calculate_profits(final[1], "TSLA"))
-
-
+profit = calculate_profits(final[1], "TSLA")
+hold_vs_trade(profit[0])
+#plot_profit_loss(profit[0])
