@@ -4,7 +4,6 @@ import streamlit as st
 from sklearn.preprocessing import MinMaxScaler
 
 #Process stocks used as predictors
-@st.cache_data
 def data_munging_stocks(target_stock_name, target_stock_data, US_EU_market_dict, asia_market_dict):
     df = target_stock_data[['Date']]
     df['Date'] = target_stock_data.index
@@ -39,7 +38,6 @@ def data_munging_stocks(target_stock_name, target_stock_data, US_EU_market_dict,
     return df_scaled, scaler_y, df
 
 # Prepare train scaled set, test scaled set, train data, test data and model
-@st.cache_data
 def prep_train_test_model(df_scaled, df, _rf): 
     proportion_test = 0.7
     gap = 365
@@ -72,7 +70,6 @@ def adjusted_metric(scaled_data, data, model, num_of_predictors, target_stock_na
     RMSE = (SSE/(data_copy.shape[0] - num_of_predictors - 1))**0.5
     return adjustR2, RMSE, data_copy
 
-@st.cache_data
 def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, _model, target_stock_name, _scaler_y):
     
     num_of_predictors = len(train_scaled_data.columns)
@@ -85,7 +82,6 @@ def assess_table(train_scaled_data, test_scaled_data, train_data, test_data, _mo
 
     return assessment, predict_train_data, predict_test_data
 
-@st.cache_data
 def calc_profits(df, target_stock_name):
     df_copy = df.copy()
     window = 10
@@ -111,7 +107,6 @@ def calc_profits(df, target_stock_name):
     total_profits = df_copy['Profit'].sum()
     return df_copy, total_profits
 
-@st.cache_data
 def calc_sharpe_ratio(df):
     df_copy = df.copy()
     df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
@@ -121,7 +116,6 @@ def calc_sharpe_ratio(df):
     yearly_sharpe = (252**0.5)*daily_return.mean() / daily_return.std(ddof=1)
     return daily_sharpe, yearly_sharpe
 
-@st.cache_data
 def calc_max_drawdown(df):
     df_copy = df.copy()
     df_copy['Wealth'] = df_copy['Trade'] + df_copy.loc[df_copy.index[0], 'Price']
